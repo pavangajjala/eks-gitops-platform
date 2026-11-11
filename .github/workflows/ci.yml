@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [terraform/cluster, terraform/bootstrap]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.17.1"
+
+      - name: Format
+        run: terraform -chdir=${{ matrix.dir }} fmt -check -diff
+
+      - name: Validate
+        run: |
+          terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
+          terraform -chdir=${{ matrix.dir }} validate
+
+  manifests:
+    name: Render and validate manifests
+    runs-on: ubuntu-latest
+    env:
+      KUSTOMIZE_VERSION: "5.8.3"
+      KUBECONFORM_VERSION: "0.6.7"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install kustomize and kubeconform
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C "$HOME/bin" kustomize
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C "$HOME/bin" kubeconform
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Validate against Kubernetes and CRD schemas
+        run: ./scripts/validate.sh
