@@ -1,0 +1,29 @@
+# Kept small on purpose: enough to run Argo CD safely, with everything else
+# left at chart defaults so upgrades stay easy.
+
+dex:
+  enabled: false # no SSO connector configured in this reference setup
+
+notifications:
+  enabled: false
+
+controller:
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+repoServer:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 512Mi}
+
+server:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+configs:
+  params:
+    # TLS is terminated at the ingress; the UI is not exposed by default and
+    # is reached with `kubectl port-forward` until an ingress is added.
+    server.insecure: true
