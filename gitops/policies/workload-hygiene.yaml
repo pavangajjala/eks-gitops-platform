@@ -1,0 +1,94 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-requests-and-limits
+  annotations:
+    policies.kyverno.io/title: Require CPU and memory requests and a memory limit
+    policies.kyverno.io/severity: medium
+spec:
+  background: true
+  rules:
+    - name: requests-and-memory-limit
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno, monitoring, traefik, cert-manager, external-secrets, argocd]
+      validate:
+        failureAction: Enforce
+        # No CPU limit on purpose: CPU limits throttle healthy pods, while a
+        # missing memory limit lets one pod take down its node.
+        message: Containers need CPU and memory requests and a memory limit.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow the latest tag
+    policies.kyverno.io/severity: medium
+spec:
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        failureAction: Enforce
+        message: Images must be pinned to a tag or digest.
+        pattern:
+          spec:
+            containers:
+              - image: "*:*"
+    - name: disallow-latest
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        failureAction: Enforce
+        message: The latest tag is mutable; use a version tag or digest.
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict image registries
+    policies.kyverno.io/severity: medium
+spec:
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["demo-*"]
+      validate:
+        # Audit first: this reports violations without blocking, so the list
+        # can be checked against real workloads before it is enforced.
+        failureAction: Audit
+        message: Application images must come from ghcr.io or the organization's ECR registries.
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/* | *.dkr.ecr.*.amazonaws.com/*"
